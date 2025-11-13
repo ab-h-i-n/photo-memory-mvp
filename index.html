@@ -32,7 +32,7 @@
 <div id="ar-container"></div>
 <div id="err"></div>
 
-<!-- Hidden video (texture) -->
+<!-- Hidden video (used as texture) -->
 <video id="ar-video"
   src="./your-video.mp4"
   preload="auto"
@@ -45,26 +45,29 @@
 
 <script>
 (async () => {
-  const MIND_FILE = "./your-target.mmind";  // <--- change
-  const VIDEO_ID = "ar-video";
-  const errBox = document.getElementById("err");
-  const container = document.getElementById("ar-container");
 
-  function errorMsg(msg) {
+  const MIND_FILE = "./your-target.mind";   // <--- UPDATE THIS
+  const VIDEO_ID  = "ar-video";
+  const container = document.getElementById("ar-container");
+  const errBox    = document.getElementById("err");
+
+  function showError(msg) {
     errBox.style.display = "block";
     errBox.innerText = msg;
-    console.error(msg);
+    console.error("AR ERROR:", msg);
   }
 
-  // 🔥 STEP 1 — Ensure CAMERA permission BEFORE AR starts
+  // STEP 1 — Ensure camera permission
   try {
     await navigator.mediaDevices.getUserMedia({ video: true });
   } catch (e) {
-    return errorMsg("Camera permission blocked. Enable camera and reload.");
+    console.error("CAMERA ERROR:", e);
+    return showError("Camera access blocked. Enable camera and reload.");
   }
 
-  // 🔥 STEP 2 — Initialize MindAR automatically
+  // STEP 2 — Initialize AR
   try {
+
     const mindarThree = new window.MINDAR.IMAGE.MindARThree({
       container: container,
       imageTargetSrc: MIND_FILE,
@@ -75,45 +78,43 @@
 
     const { renderer, scene, camera } = mindarThree;
 
-    // full-screen renderer
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.domElement.style.position = "absolute";
     renderer.domElement.style.top = "0";
     container.appendChild(renderer.domElement);
 
-    // 🔥 STEP 3 — Setup video
+    // STEP 3 — Setup video texture
     const video = document.getElementById(VIDEO_ID);
     video.muted = true;
     video.autoplay = true;
     video.loop = true;
+
     await video.play().catch(()=>{});
 
-    // ensure metadata loaded (for width/height)
     await new Promise((res)=>{
       if (video.readyState >= 2) res();
       else video.onloadedmetadata = res;
     });
 
-    // 🔥 STEP 4 — Create texture & mesh
     const texture = new THREE.VideoTexture(video);
     const aspect = video.videoWidth / video.videoHeight;
     const geometry = new THREE.PlaneGeometry(aspect, 1);
     const material = new THREE.MeshBasicMaterial({ map: texture });
     const mesh = new THREE.Mesh(geometry, material);
 
-    // attach mesh to target
     const anchor = mindarThree.addAnchor(0);
     anchor.group.add(mesh);
 
     anchor.onTargetFound = () => video.play();
     anchor.onTargetLost  = () => video.pause();
 
-    // 🔥 STEP 5 — START AR immediately (NO CLICK REQUIRED)
+    // START AR
     await mindarThree.start();
     renderer.setAnimationLoop(() => renderer.render(scene, camera));
 
   } catch (e) {
-    errorMsg("Failed to init AR: " + (e.message || e));
+    console.error("AR INIT ERROR:", e);
+    showError("Initialization failed: " + e);
   }
 
 })();
