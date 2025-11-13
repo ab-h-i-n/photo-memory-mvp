@@ -135,9 +135,9 @@
 
     // STEP 2 — Setup video texture
     const video = document.getElementById(VIDEO_ID);
-    video.muted = true;   // Start muted to allow autoplay
+    video.muted = true;   // Start muted
     video.volume = 1.0;   // Set volume to 100%
-    video.autoplay = true;
+    video.autoplay = false; // Don't autoplay - only play on target detection
     video.loop = true;
     video.playsInline = true;
 
