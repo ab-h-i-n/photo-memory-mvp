@@ -103,16 +103,20 @@
       container: container,
       imageTargetSrc: MIND_FILE,
       maxTrack: 1,
-      filterMinCF: 0.1,        // Increased for faster response (was 0.0001)
-      filterBeta: 10,          // Increased for faster tracking (was 0.001)
-      warmupTolerance: 2,      // Reduced for faster detection (was 5)
-      missTolerance: 2,        // Reduced for faster response (was 5)
+      filterMinCF: 0.001,      // Balanced for smooth tracking
+      filterBeta: 1000,        // Very high for instant response
+      warmupTolerance: 1,      // Minimum for fastest detection
+      missTolerance: 1,        // Minimum for fastest response
       uiLoading: "no",
       uiError: "no"
     });
 
     const { renderer, scene, camera } = mindarThree;
 
+    // Performance optimizations for low-end devices
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Limit pixel ratio
+    renderer.powerPreference = "high-performance";
+    
     // Enable alpha on renderer for transparency
     renderer.setClearColor(0x000000, 0);
     renderer.domElement.style.background = "transparent";
@@ -131,6 +135,7 @@
     // Handle window resize
     window.addEventListener('resize', () => {
       renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     });
 
     // STEP 2 — Setup video texture
@@ -140,6 +145,11 @@
     video.autoplay = false; // Don't autoplay - only play on target detection
     video.loop = true;
     video.playsInline = true;
+    
+    // Reduce video quality for better performance on low-end devices
+    if (video.videoWidth > 1280) {
+      video.style.maxWidth = '1280px';
+    }
 
     // Wait for video to be ready
     await new Promise((resolve) => {
@@ -155,6 +165,7 @@
     const texture = new THREE.VideoTexture(video);
     texture.minFilter = THREE.LinearFilter;  // Performance optimization
     texture.magFilter = THREE.LinearFilter;  // Performance optimization
+    texture.generateMipmaps = false;         // Disable mipmaps for performance
     
     const aspect = video.videoWidth / video.videoHeight;
     const geometry = new THREE.PlaneGeometry(aspect, 1);
@@ -168,9 +179,12 @@
     anchor.group.add(mesh);
 
     let isPlaying = false;
+    let lastPlayTime = 0;
+    const playDebounce = 100; // Prevent rapid toggling
 
     anchor.onTargetFound = () => {
-      if (!isPlaying) {
+      const now = Date.now();
+      if (!isPlaying && now - lastPlayTime > playDebounce) {
         console.log("Target found - playing video with sound");
         video.currentTime = 0;  // Start from beginning
         video.muted = false;    // Unmute when target found (user interaction)
@@ -181,15 +195,18 @@
           video.play();
         });
         isPlaying = true;
+        lastPlayTime = now;
       }
     };
     anchor.onTargetLost  = () => {
-      if (isPlaying) {
+      const now = Date.now();
+      if (isPlaying && now - lastPlayTime > playDebounce) {
         console.log("Target lost - pausing video");
         video.pause();
         video.muted = true;      // Mute when paused
         video.currentTime = 0;   // Reset to beginning
         isPlaying = false;
+        lastPlayTime = now;
       }
     };
 
@@ -213,13 +230,14 @@
     
     // Optimized render loop
     let lastTime = 0;
-    const fps = 30; // Target 30 FPS for better performance
-    const frameInterval = 1000 / fps;
+    const targetFPS = 'ontouchstart' in window ? 30 : 60; // 30 FPS on mobile, 60 on desktop
+    const frameInterval = 1000 / targetFPS;
     
     renderer.setAnimationLoop((time) => {
-      if (time - lastTime >= frameInterval) {
+      const delta = time - lastTime;
+      if (delta >= frameInterval) {
         renderer.render(scene, camera);
-        lastTime = time;
+        lastTime = time - (delta % frameInterval); // Maintain frame timing
       }
     });
 
