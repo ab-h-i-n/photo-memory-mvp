@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>MagicFrame AR — Single HTML</title>
+
+    <!-- MindAR + three.js (Three integration is more reliable for video textures) -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.5/dist/mindar-image-three.prod.js"></script>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/mind-ar@1.1.5/dist/mindar-image.prod.css"
+    />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"
+    />
+
+    <style>
+      /* full-viewport AR canvas/container */
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        background: #000;
+        font-family: Inter, Roboto, Arial;
+        color: #fff;
+        overflow: hidden;
+      }
+      #ar-container {
+        width: 100vw;
+        height: 100vh;
+        position: relative;
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+
+      /* small top-left UI for instructions */
+      #ui {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        z-index: 50;
+        background: rgba(0, 0, 0, 0.45);
+        padding: 8px 12px;
+        border-radius: 10px;
+        backdrop-filter: blur(6px);
+        font-size: 14px;
+      }
+
+      #start-btn {
+        display: inline-block;
+        margin-top: 6px;
+        padding: 8px 10px;
+        background: #0b84ff;
+        color: white;
+        border-radius: 8px;
+        text-decoration: none;
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      /* ensure video element is hidden (we use it only as texture) */
+      video#ar-video {
+        display: none;
+      }
+
+      /* fallback message when no camera or unsupported */
+      #err {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        color: #fff;
+        background: rgba(0, 0, 0, 0.6);
+        padding: 16px;
+        border-radius: 8px;
+        display: none;
+        z-index: 60;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ar-container">
+      <div id="ui">
+        Point your camera at the target image.<br />
+        <small>Tap start if camera prompt didn't appear.</small><br />
+        <a id="start-btn">Start AR</a>
+      </div>
+
+      <div id="err"></div>
+    </div>
+
+    <!-- The video element used as texture (hidden) -->
+    <!-- Replace "your-video.mp4" with your actual video filename -->
+    <video
+      id="ar-video"
+      src="your-video.mp4"
+      crossorigin="anonymous"
+      playsinline
+      webkit-playsinline
+      muted
+      loop
+    ></video>
+
+    <script>
+      (async () => {
+        // ---------- CONFIGURE: replace filename with your .mind and video ----------
+        const MIND_FILE = "your-target.mind"; // <-- replace with your .mind filename
+        const VIDEO_EL_ID = "ar-video"; // hidden video element id
+        // -------------------------------------------------------------------------
+
+        const container = document.querySelector("#ar-container");
+        const uiStart = document.getElementById("start-btn");
+        const errBox = document.getElementById("err");
+
+        function showError(msg) {
+          errBox.style.display = "block";
+          errBox.innerText = msg;
+          console.error(msg);
+        }
+
+        // Helper: request camera permission proactively for better UX
+        async function requestCameraPermission() {
+          try {
+            // modern browsers: try getUserMedia to prompt permissions
+            await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false,
+            });
+            return true;
+          } catch (e) {
+            return false;
+          }
+        }
+
+        // Initialize MindAR + Three
+        async function initAR() {
+          try {
+            // Create MindARThree instance (container will host canvas)
+            const mindarThree = new window.MINDAR.IMAGE.MindARThree({
+              container: container,
+              imageTargetSrc: MIND_FILE,
+              maxTrack: 1,
+              uiLoading: "no",
+              uiError: "no",
+              // You can lower or raise the following for performance/quality:
+              // filterMinCF: 0.0001, filterBeta: 0.001
+            });
+
+            const { renderer, scene, camera } = mindarThree;
+
+            // make renderer fill container
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.domElement.style.position = "absolute";
+            renderer.domElement.style.top = "0";
+            renderer.domElement.style.left = "0";
+            renderer.domElement.style.width = "100%";
+            renderer.domElement.style.height = "100%";
+
+            // Hidden video element used as texture
+            const video = document.getElementById(VIDEO_EL_ID);
+            if (!video) {
+              showError("Hidden video element not found.");
+              return;
+            }
+
+            // Ensure video is allowed to play (muted is required for autoplay on many browsers)
+            video.muted = true;
+            video.playsInline = true;
+            video.loop = true;
+
+            // Wait until video metadata loaded so we can set correct aspect ratio
+            await new Promise((res, rej) => {
+              if (video.readyState >= 2) return res();
+              video.addEventListener("loadedmetadata", () => res());
+              video.addEventListener("error", (e) => rej(e));
+            });
+
+            // Create three.js video texture
+            const texture = new THREE.VideoTexture(video);
+            texture.minFilter = THREE.LinearFilter;
+            texture.magFilter = THREE.LinearFilter;
+            texture.format = THREE.RGBAFormat;
+
+            // Create plane geometry sized to video aspect ratio
+            const aspect = video.videoWidth / video.videoHeight || 1;
+            // We choose plane height = 1 unit; width = aspect
+            const height = 1;
+            const width = aspect * height;
+            const geometry = new THREE.PlaneGeometry(width, height);
+
+            // Material using video texture
+            const material = new THREE.MeshBasicMaterial({
+              map: texture,
+              toneMapped: false,
+            });
+
+            // Mesh that will display video over the target image
+            const mesh = new THREE.Mesh(geometry, material);
+
+            // Adjustments: rotate so video faces camera. MindAR coordinate system
+            // may require rotating X axis by -PI/2 depending on target orientation.
+            mesh.rotation.x = 0; // try 0 first; uncomment next line if it appears rotated
+            // mesh.rotation.x = -Math.PI / 2;
+
+            // IMPORTANT: Anchor coordinate space. We add mesh to anchor.group so it follows target
+            const anchor = mindarThree.addAnchor(0);
+            anchor.group.add(mesh);
+
+            // Play/pause video with target visibility
+            anchor.onTargetFound = () => {
+              // Ensure video playback is allowed — some browsers require a user gesture.
+              const playPromise = video.play();
+              if (playPromise !== undefined) {
+                playPromise.catch((e) => {
+                  // If autoplay blocked, show UI hint to tap Start AR (user gesture)
+                  console.warn("Video play prevented:", e);
+                });
+              }
+            };
+            anchor.onTargetLost = () => video.pause();
+
+            // Start MindAR & rendering loop
+            await mindarThree.start();
+            renderer.setAnimationLoop(() => {
+              renderer.render(scene, camera);
+            });
+
+            // Hide UI since AR started
+            uiStart.style.display = "none";
+          } catch (e) {
+            showError("Failed to initialize AR: " + (e.message || e));
+          }
+        }
+
+        // Start action that may be required to allow autoplay: user gesture
+        async function startAction() {
+          uiStart.innerText = "Starting…";
+          uiStart.style.pointerEvents = "none";
+
+          // try camera permission first (prompts)
+          const ok = await requestCameraPermission();
+          if (!ok) {
+            showError(
+              "Camera permission denied or not available. Please enable camera and reload."
+            );
+            return;
+          }
+
+          // Try to unlock video by playing briefly (some browsers require user gesture)
+          const video = document.getElementById(VIDEO_EL_ID);
+          try {
+            // play/pause to get permission
+            await video.play();
+            video.pause();
+          } catch (e) {
+            // ignore — will ask again when target found
+            console.warn("video autoplay test failed:", e);
+          }
+
+          // Initialize AR
+          await initAR();
+        }
+
+        // Hook UI button
+        uiStart.addEventListener("click", startAction);
+
+        // Auto attempt: request camera once so mobile prompts on page load (but may be blocked)
+        // We do not automatically start AR to avoid autoplay restrictions; user can tap Start.
+        try {
+          await navigator.mediaDevices.getUserMedia({ video: true });
+        } catch (e) {
+          /* ok */
+        }
+
+        // Also attempt to auto-start (silent) — many browsers disallow autoplay so keep Start button visible
+        // but try once so desktop may auto-start.
+        // If you want fully automatic, uncomment the next line (may fail on some browsers).
+        // startAction();
+      })();
+    </script>
+  </body>
+</html>
