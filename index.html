@@ -78,7 +78,6 @@
   preload="auto"
   playsinline
   webkit-playsinline
-  muted
   loop
   crossorigin="anonymous"
 ></video>
@@ -136,7 +135,8 @@
 
     // STEP 2 — Setup video texture
     const video = document.getElementById(VIDEO_ID);
-    video.muted = true;
+    video.muted = false;  // Enable sound
+    video.volume = 1.0;   // Set volume to 100%
     video.autoplay = true;
     video.loop = true;
     video.playsInline = true;
@@ -168,6 +168,7 @@
 
     anchor.onTargetFound = () => {
       console.log("Target found - playing video");
+      video.muted = false;  // Unmute when target found
       video.play().catch(err => console.log("Play error:", err));
     };
     anchor.onTargetLost  = () => {
