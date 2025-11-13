@@ -36,11 +36,11 @@
 <video id="ar-video"
   src="./your-video.mp4"
   preload="auto"
-  autoplay
   playsinline
   webkit-playsinline
   muted
   loop
+  crossorigin="anonymous"
 ></video>
 
 <script>
@@ -57,21 +57,17 @@
     console.error("AR ERROR:", msg);
   }
 
-  // STEP 1 — Ensure camera permission
-  try {
-    await navigator.mediaDevices.getUserMedia({ video: true });
-  } catch (e) {
-    console.error("CAMERA ERROR:", e);
-    return showError("Camera access blocked. Enable camera and reload.");
-  }
-
-  // STEP 2 — Initialize AR
+  // STEP 1 — Initialize AR (MindAR will handle camera permissions)
   try {
 
     const mindarThree = new window.MINDAR.IMAGE.MindARThree({
       container: container,
       imageTargetSrc: MIND_FILE,
       maxTrack: 1,
+      filterMinCF: 0.0001,
+      filterBeta: 0.001,
+      warmupTolerance: 5,
+      missTolerance: 5,
       uiLoading: "no",
       uiError: "no"
     });
@@ -83,18 +79,28 @@
     renderer.domElement.style.top = "0";
     container.appendChild(renderer.domElement);
 
-    // STEP 3 — Setup video texture
+    // STEP 2 — Setup video texture
     const video = document.getElementById(VIDEO_ID);
     video.muted = true;
     video.autoplay = true;
     video.loop = true;
+    video.playsInline = true;
 
-    await video.play().catch(()=>{});
-
-    await new Promise((res)=>{
-      if (video.readyState >= 2) res();
-      else video.onloadedmetadata = res;
+    // Wait for video to be ready
+    await new Promise((resolve) => {
+      if (video.readyState >= 2) {
+        resolve();
+      } else {
+        video.addEventListener('loadedmetadata', resolve, { once: true });
+      }
     });
+
+    // Try to play video
+    try {
+      await video.play();
+    } catch (err) {
+      console.log("Initial video play blocked, will play on target found");
+    }
 
     const texture = new THREE.VideoTexture(video);
     const aspect = video.videoWidth / video.videoHeight;
@@ -105,8 +111,14 @@
     const anchor = mindarThree.addAnchor(0);
     anchor.group.add(mesh);
 
-    anchor.onTargetFound = () => video.play();
-    anchor.onTargetLost  = () => video.pause();
+    anchor.onTargetFound = () => {
+      console.log("Target found - playing video");
+      video.play().catch(err => console.log("Play error:", err));
+    };
+    anchor.onTargetLost  = () => {
+      console.log("Target lost - pausing video");
+      video.pause();
+    };
 
     // START AR
     await mindarThree.start();
@@ -114,7 +126,7 @@
 
   } catch (e) {
     console.error("AR INIT ERROR:", e);
-    showError("Initialization failed: " + e);
+    showError("Initialization failed. Please enable camera access and reload.");
   }
 
 })();
