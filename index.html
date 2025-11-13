@@ -135,7 +135,7 @@
 
     // STEP 2 — Setup video texture
     const video = document.getElementById(VIDEO_ID);
-    video.muted = false;  // Enable sound
+    video.muted = true;   // Start muted to allow autoplay
     video.volume = 1.0;   // Set volume to 100%
     video.autoplay = true;
     video.loop = true;
@@ -150,13 +150,8 @@
       }
     });
 
-    // Try to play video
-    try {
-      await video.play();
-    } catch (err) {
-      console.log("Initial video play blocked, will play on target found");
-    }
-
+    // Don't play video initially - wait for target detection
+    // Just prepare the texture
     const texture = new THREE.VideoTexture(video);
     const aspect = video.videoWidth / video.videoHeight;
     const geometry = new THREE.PlaneGeometry(aspect, 1);
@@ -167,13 +162,21 @@
     anchor.group.add(mesh);
 
     anchor.onTargetFound = () => {
-      console.log("Target found - playing video");
-      video.muted = false;  // Unmute when target found
-      video.play().catch(err => console.log("Play error:", err));
+      console.log("Target found - playing video with sound");
+      video.currentTime = 0;  // Start from beginning
+      video.muted = false;    // Unmute when target found (user interaction)
+      video.play().catch(err => {
+        console.log("Play error:", err);
+        // If unmuted play fails, try muted
+        video.muted = true;
+        video.play();
+      });
     };
     anchor.onTargetLost  = () => {
       console.log("Target lost - pausing video");
       video.pause();
+      video.muted = true;      // Mute when paused
+      video.currentTime = 0;   // Reset to beginning
     };
 
     // START AR
