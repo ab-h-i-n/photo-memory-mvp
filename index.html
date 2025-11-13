@@ -12,18 +12,44 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
 
   <style>
-    html,body { margin:0; height:100%; overflow:hidden; background:black; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      margin: 0; 
+      height: 100%; 
+      width: 100%;
+      overflow: hidden; 
+      background: black; 
+    }
     #ar-container {
-      width:100vw; height:100vh;
-      position:relative;
+      width: 100vw; 
+      height: 100vh;
+      position: relative;
+      overflow: hidden;
+    }
+    #ar-container canvas,
+    #ar-container video {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    #ar-video {
+      display: none;
     }
     #err {
-      position:absolute; top:50%; left:50%;
-      transform:translate(-50%,-50%);
-      background:rgba(0,0,0,0.6);
-      padding:12px 18px; border-radius:10px;
-      color:white; font-size:15px; display:none;
-      z-index:999;
+      position: absolute; 
+      top: 50%; 
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.6);
+      padding: 12px 18px; 
+      border-radius: 10px;
+      color: white; 
+      font-size: 15px; 
+      display: none;
+      z-index: 999;
     }
   </style>
 </head>
@@ -74,10 +100,18 @@
 
     const { renderer, scene, camera } = mindarThree;
 
-    renderer.setSize(container.clientWidth, container.clientHeight);
+    // Make sure renderer is properly sized and visible
+    renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.domElement.style.position = "absolute";
     renderer.domElement.style.top = "0";
+    renderer.domElement.style.left = "0";
+    renderer.domElement.style.zIndex = "1";
     container.appendChild(renderer.domElement);
+    
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
 
     // STEP 2 — Setup video texture
     const video = document.getElementById(VIDEO_ID);
@@ -122,7 +156,12 @@
 
     // START AR
     await mindarThree.start();
-    renderer.setAnimationLoop(() => renderer.render(scene, camera));
+    
+    console.log("AR started successfully");
+    
+    renderer.setAnimationLoop(() => {
+      renderer.render(scene, camera);
+    });
 
   } catch (e) {
     console.error("AR INIT ERROR:", e);
